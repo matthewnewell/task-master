@@ -30,8 +30,20 @@ function readStoredId(): string | null {
   }
 }
 
+/** The Depot's own "Test drive" link rides the active persona along as `?person_id=` (see
+ * Conway's Depot's ApplicationDetailPage.tsx) — read once, on mount, not on every render, so
+ * it doesn't fight a later in-app persona switch. */
+function readUrlPersonId(): string | null {
+  try {
+    return new URLSearchParams(window.location.search).get('person_id')
+  } catch {
+    return null
+  }
+}
+
 export function PersonaProvider({ children }: { children: ReactNode }) {
   const { data, isLoading } = usePeople()
+  const [urlPersonId] = useState<string | null>(readUrlPersonId)
   const [personId, setPersonIdState] = useState<string | null>(readStoredId)
 
   function setPersonId(id: string) {
@@ -47,6 +59,12 @@ export function PersonaProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (people.length === 0) return
+    // Arriving from the Depot with a person_id always wins on first load, even over whatever
+    // was last used locally — that's the whole point of following a link that names you.
+    if (urlPersonId && people.some((p) => p.id === urlPersonId)) {
+      if (personId !== urlPersonId) setPersonId(urlPersonId)
+      return
+    }
     const stored = people.find((p) => p.id === personId)
     if (stored) return
     const fallback = people.find((p) => p.is_admin) ?? people[0]
