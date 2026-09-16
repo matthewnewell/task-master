@@ -1,6 +1,6 @@
 """
-AI client — routes to Claude (cloud), Gemini (cloud), or Ollama (on-premise) based on the
-AI_PROVIDER env var.
+AI client — routes to Claude (cloud), Gemini (cloud), Ollama (on-premise), or Conway's Depot
+(a shared proxy — see _depot below) based on the AI_PROVIDER env var.
 
 Ported ~verbatim from BurnedValue's ai_client.py (same author's sibling project, same as every
 other app in this ecosystem) to keep the same on-prem-friendly, AI-optional posture: AI is off
@@ -12,11 +12,16 @@ Usage:
     data  = chat_json(messages=[...], system="...")   # dict, or {"error": "..."} on failure
 
 Environment variables:
-    AI_PROVIDER   : "claude" | "gemini" | "ollama" | "none"  (default: "none")
-    AI_API_KEY    : Anthropic API key (Claude) or Google AI Studio API key (Gemini)
+    AI_PROVIDER   : "claude" | "gemini" | "ollama" | "depot" | "none"  (default: "none")
+    AI_API_KEY    : Anthropic API key (Claude) or Google AI Studio API key (Gemini) — not
+                    needed for "depot", since the Depot holds its own credentials
     AI_BASE_URL   : Ollama base URL, e.g. http://localhost:11434 (Ollama only)
     AI_MODEL      : Model name. Defaults: claude→claude-opus-4-5, gemini→gemini-2.5-flash,
-                    ollama→llama3
+                    ollama→llama3 (meaningless for "depot" — the Depot's own AI_MODEL wins)
+    DEPOT_API_URL : Where the Depot's own AI proxy lives (AI_PROVIDER=depot only), default
+                    http://localhost:8090 — same env var depot_client.py already reads, so
+                    setting one config value AI-enables both the proxy and the rest of this
+                    app's own (unrelated) Depot calls at once
 """
 
 import json
@@ -30,13 +35,13 @@ AI_MODEL     = os.environ.get("AI_MODEL",     "")
 
 NOT_CONFIGURED_MESSAGE = (
     "AI is not configured for this instance. "
-    "Set AI_PROVIDER to 'claude', 'gemini', or 'ollama' in your environment or docker-compose.yml."
+    "Set AI_PROVIDER to 'claude', 'gemini', 'ollama', or 'depot' in your environment or docker-compose.yml."
 )
 _NOT_CONFIGURED = NOT_CONFIGURED_MESSAGE  # internal alias used below
 
 
 def is_configured() -> bool:
-    return AI_PROVIDER in ("claude", "gemini", "ollama")
+    return AI_PROVIDER in ("claude", "gemini", "ollama", "depot")
 
 
 def chat(messages: list[dict], system: str = "", max_tokens: int = 1024) -> str:
@@ -53,6 +58,8 @@ def chat(messages: list[dict], system: str = "", max_tokens: int = 1024) -> str:
         return _gemini(messages, system, max_tokens)
     elif AI_PROVIDER == "ollama":
         return _ollama(messages, system)
+    elif AI_PROVIDER == "depot":
+        return _depot(messages, system, max_tokens)
     else:
         return _NOT_CONFIGURED
 
@@ -183,3 +190,38 @@ def _ollama(messages: list[dict], system: str) -> str:
         return f"Could not connect to Ollama at {base}. Is it running?"
     except Exception as e:
         return f"Ollama error: {e}"
+
+
+# ── Depot proxy ──────────────────────────────────────────────────────────────
+
+def _depot(messages: list[dict], system: str, max_tokens: int = 1024) -> str:
+    """Routes through Conway's Depot's own /api/ai/chat instead of a provider directly — see
+    that route's own docstring (routes/ai_proxy.py there). The whole point: this app needs no
+    AI_API_KEY of its own, just DEPOT_API_URL, which depot_client.py already reads for its own
+    calls — imported from there rather than re-declared here, so the two stay in sync
+    automatically. Same error/degrade shape as every other provider function: a string starting
+    "[AI error: ...]" or a plain reachability message, never an exception."""
+    try:
+        import httpx
+    except ImportError:
+        return "httpx package not installed. Run: pip install httpx"
+
+    from depot_client import DEPOT_API_URL
+
+    try:
+        r = httpx.post(
+            f"{DEPOT_API_URL}/api/ai/chat",
+            json={"messages": messages, "system": system, "max_tokens": max_tokens},
+            timeout=120,
+        )
+        r.raise_for_status()
+        data = r.json()
+        if "error" in data:
+            return f"[AI error: {data['error']}]"
+        return data.get("reply", "")
+    except httpx.HTTPStatusError as e:
+        return f"[AI error: Depot proxy returned {e.response.status_code}: {e.response.text[:300]}]"
+    except httpx.ConnectError:
+        return f"Could not reach the Depot's AI proxy at {DEPOT_API_URL}. Is it running?"
+    except Exception as e:
+        return f"[AI error: {e}]"
