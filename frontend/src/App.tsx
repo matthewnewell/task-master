@@ -1,4 +1,5 @@
 import { Route, Routes } from 'react-router-dom'
+import JournalEmbed from './components/JournalEmbed'
 import Nav from './components/Nav'
 import { PersonaProvider } from './lib/persona'
 import BoardPage from './pages/BoardPage'
@@ -10,6 +11,7 @@ function Layout({ children }: { children: React.ReactNode }) {
     <div className="app-layout">
       <Nav />
       <div className="app-layout__body">{children}</div>
+      <JournalEmbed />
     </div>
   )
 }
