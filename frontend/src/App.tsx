@@ -1,4 +1,4 @@
-import { DrawerLayout } from '@conways/drawer'
+import { DrawerLayout, DepotBackBar } from '@conways/drawer'
 import { Route, Routes } from 'react-router-dom'
 import Nav from './components/Nav'
 import { PersonaProvider, usePersona } from './lib/persona'
@@ -42,6 +42,7 @@ function Layout({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <PersonaProvider>
+      <DepotBackBar />
       <Routes>
         <Route path="/about" element={<SplashPage />} />
         <Route path="/" element={<Layout><BoardPage /></Layout>} />
