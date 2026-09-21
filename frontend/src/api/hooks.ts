@@ -23,10 +23,37 @@ export function useTasks(personId: string | undefined) {
   })
 }
 
+/** Everyone's cards for one project — the read-only project view. */
+export function useProjectTasks(projectId: string | undefined) {
+  return useQuery({
+    queryKey: ['tasks', 'project', projectId],
+    queryFn: () => api.get<Task[]>(`/tasks?project_id=${encodeURIComponent(projectId!)}`),
+    enabled: !!projectId,
+  })
+}
+
+export function useDelegateTask(personId: string | undefined) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, toPersonId }: { id: string; toPersonId: string }) =>
+      api.post<Task>(`/tasks/${id}/delegate`, { by_person_id: personId, to_person_id: toPersonId }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
+  })
+}
+
+export function useRespondTask(personId: string | undefined) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, accept, reason }: { id: string; accept: boolean; reason?: string }) =>
+      api.post<Task>(`/tasks/${id}/respond`, { person_id: personId, accept, reason }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
+  })
+}
+
 export function useCreateTask(personId: string | undefined) {
   const invalidate = useInvalidateTasks(personId)
   return useMutation({
-    mutationFn: (data: { title: string; note?: string }) =>
+    mutationFn: (data: { title: string; note?: string; project_id?: string | null; project_name?: string | null }) =>
       api.post<Task>('/tasks', { person_id: personId, ...data }),
     onSuccess: invalidate,
   })
@@ -35,7 +62,16 @@ export function useCreateTask(personId: string | undefined) {
 export function useUpdateTask(personId: string | undefined) {
   const invalidate = useInvalidateTasks(personId)
   return useMutation({
-    mutationFn: ({ id, ...data }: { id: string; title?: string; note?: string }) =>
+    mutationFn: ({
+      id,
+      ...data
+    }: {
+      id: string
+      title?: string
+      note?: string
+      project_id?: string | null
+      project_name?: string | null
+    }) =>
       api.put<Task>(`/tasks/${id}`, data),
     onSuccess: invalidate,
   })

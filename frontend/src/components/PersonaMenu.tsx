@@ -51,7 +51,10 @@ export default function PersonaMenu() {
         <span className="persona-menu__avatar" aria-hidden="true">
           {persona ? persona.name.charAt(0) : '?'}
         </span>
-        <span className="persona-menu__name">{persona?.name ?? 'Viewing as…'}</span>
+        <span className="persona-menu__id">
+          <span className="persona-menu__name">{persona?.name ?? 'Viewing as…'}</span>
+          {persona?.title && <span className="persona-menu__role">{persona.title}</span>}
+        </span>
         <span className="persona-menu__caret" aria-hidden="true">
           ▾
         </span>

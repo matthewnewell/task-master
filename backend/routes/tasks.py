@@ -1,16 +1,27 @@
 from flask import Blueprint, jsonify, request
 
+import depot_client
 from db import db
-from models import STATUSES, Task
+from models import STATUSES, Task, _now
 
 bp = Blueprint("tasks", __name__, url_prefix="/api/tasks")
 
 
 @bp.get("")
 def list_tasks():
+    project_id = request.args.get("project_id")
+    if project_id:
+        # The project view: everyone's cards for one project. Ordering is per assignee (each
+        # person's own column positions) — there is deliberately no project-wide priority rank.
+        tasks = (
+            Task.query.filter_by(project_id=project_id)
+            .order_by(Task.person_id, Task.status, Task.position)
+            .all()
+        )
+        return jsonify([t.to_dict() for t in tasks])
     person_id = request.args.get("person_id")
     if not person_id:
-        return jsonify({"error": "person_id is required"}), 400
+        return jsonify({"error": "person_id or project_id is required"}), 400
     tasks = (
         Task.query.filter_by(person_id=person_id)
         .order_by(Task.status, Task.position)
@@ -110,6 +121,15 @@ def reorder_tasks():
     if not_owned:
         return jsonify({"error": f"task ids not owned by person_id: {not_owned}"}), 400
 
+    stuck = [
+        tid
+        for status, ids in columns.items()
+        for tid in ids
+        if status != "backlog" and tasks_by_id[tid].delegation_state == "offered"
+    ]
+    if stuck:
+        return jsonify({"error": f"accept or decline a delegated task before moving it: {stuck}"}), 400
+
     for status, ids in columns.items():
         for i, tid in enumerate(ids):
             tasks_by_id[tid].status = status
@@ -117,3 +137,108 @@ def reorder_tasks():
 
     db.session.commit()
     return jsonify([t.to_dict() for t in tasks_by_id.values()])
+
+
+def _person_lookup():
+    """{person_id: person} from the Depot, or None if it's unreachable."""
+    people = depot_client.fetch_people()
+    if people is None:
+        return None
+    return {p["id"]: p for p in people}
+
+
+def _end_of_backlog(person_id):
+    max_pos = (
+        db.session.query(db.func.max(Task.position))
+        .filter_by(person_id=person_id, status="backlog")
+        .scalar()
+    )
+    return (max_pos + 1) if max_pos is not None else 0
+
+
+@bp.post("/<task_id>/delegate")
+def delegate_task(task_id):
+    """Hand a project-tagged card to another member of that project. Body: {by_person_id,
+    to_person_id}. Only the card's current assignee can delegate it (by_person_id must equal
+    person_id). The card moves to the end of the new assignee's Backlog as an *offer* they
+    accept or decline (see respond_task). Personal (project-less) cards can't be delegated, so
+    there is no way to push private to-dos onto someone. Membership comes from the Depot.
+    A Journal entry is posted to the project, best-effort."""
+    task = Task.query.get_or_404(task_id)
+    body = request.get_json(force=True) or {}
+    by_id = body.get("by_person_id")
+    to_id = body.get("to_person_id")
+    if not by_id or not to_id:
+        return jsonify({"error": "by_person_id and to_person_id are required"}), 400
+    if by_id != task.person_id:
+        return jsonify({"error": "only the current assignee can delegate this task"}), 403
+    if to_id == by_id:
+        return jsonify({"error": "cannot delegate a task to yourself"}), 400
+    if not task.project_id:
+        return jsonify({"error": "only tasks tagged with a project can be delegated"}), 400
+
+    people = _person_lookup()
+    if people is None:
+        return jsonify({"error": "Conway's Depot is unreachable, so project membership can't be checked"}), 503
+    assignee = people.get(to_id)
+    if not assignee or task.project_id not in (assignee.get("project_ids") or []):
+        return jsonify({"error": "that person is not a member of this project"}), 400
+    actor = people.get(by_id) or {}
+
+    if not task.created_by_id:
+        task.created_by_id = by_id
+        task.created_by_name = actor.get("name")
+    task.person_id = to_id
+    task.status = "backlog"
+    task.delegation_state = "offered"
+    task.delegated_at = _now()
+    task.position = _end_of_backlog(to_id)
+    db.session.commit()
+
+    posted = depot_client.post_project_note(
+        task.project_id,
+        by_id,
+        f"{actor.get('name', 'Someone')} delegated \u201c{task.title}\u201d to {assignee['name']}.",
+    )
+    return jsonify({**task.to_dict(), "journal_posted": posted})
+
+
+@bp.post("/<task_id>/respond")
+def respond_task(task_id):
+    """The assignee's answer to an offered card. Body: {person_id, accept, reason?}. Accepting
+    just clears the offer (no Journal entry — it's the expected outcome and would only add
+    noise). Declining hands the card back to whoever created it and posts a Journal entry
+    carrying the reason, since a decline is the signal the project actually needs to see."""
+    task = Task.query.get_or_404(task_id)
+    body = request.get_json(force=True) or {}
+    person_id = body.get("person_id")
+    if person_id != task.person_id:
+        return jsonify({"error": "only the current assignee can respond to this task"}), 403
+    if task.delegation_state != "offered":
+        return jsonify({"error": "this task has no pending offer"}), 400
+
+    if body.get("accept"):
+        task.delegation_state = "accepted"
+        db.session.commit()
+        return jsonify({**task.to_dict(), "journal_posted": False})
+
+    creator_id = task.created_by_id
+    if not creator_id:
+        return jsonify({"error": "this task has no creator to hand it back to"}), 400
+    reason = (body.get("reason") or "").strip()
+    decliner_name = ((_person_lookup() or {}).get(person_id) or {}).get("name", "Someone")
+
+    task.person_id = creator_id
+    task.status = "backlog"
+    task.delegation_state = "declined"
+    task.position = _end_of_backlog(creator_id)
+    if reason:
+        task.note = f"Declined by {decliner_name}: {reason}" + (f"\n\n{task.note}" if task.note else "")
+    db.session.commit()
+
+    text = f"{decliner_name} declined \u201c{task.title}\u201d"
+    if task.created_by_name:
+        text += f" (delegated by {task.created_by_name})"
+    text += f": {reason}" if reason else "."
+    posted = depot_client.post_project_note(task.project_id, person_id, text)
+    return jsonify({**task.to_dict(), "journal_posted": posted})

@@ -1,7 +1,7 @@
 .board-page {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 24px 20px 60px;
+  padding: 16px 20px 60px;
 }
 
 .board-page__loading {
@@ -43,7 +43,7 @@
 }
 
 .board-columns {
-  margin-top: 20px;
+  margin-top: 0;
   display: grid;
   grid-template-columns: repeat(4, minmax(240px, 1fr));
   gap: 16px;
@@ -227,4 +227,81 @@
 .task-form__actions {
   display: flex;
   gap: 8px;
+}
+
+/* ── delegation / project view ── */
+.task-form__project {
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: 0.82rem;
+  font-family: inherit;
+  background: var(--color-surface);
+}
+
+.task-card__inline {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.task-card__respond {
+  padding: 4px 12px;
+  font-size: 12px;
+}
+
+.task-card__badge--offer {
+  background: var(--color-warning-soft, #fef3c7);
+  color: var(--color-warning, #b45309);
+}
+
+.task-card__badge--from {
+  background: var(--color-surface-sunken);
+  color: var(--color-text-secondary);
+}
+
+.task-card__badge--declined {
+  background: var(--color-critical-soft);
+  color: var(--color-critical);
+}
+
+.project-lanes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.task-card--readonly {
+  cursor: default;
+}
+
+.task-card--readonly:hover {
+  border-color: var(--color-border);
+  box-shadow: none;
+}
+
+.task-card__row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.task-card__status {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--color-text-faint);
+}
+
+.task-card__status--doing {
+  color: var(--color-accent);
+}
+
+.task-card__assignee {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-accent);
 }

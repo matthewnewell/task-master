@@ -34,7 +34,12 @@ def _set_sqlite_pragma(dbapi_conn, connection_record):
 
 # (table_name, column_name, add_column_sql) — additive-only, run after create_all(). Empty for
 # now; add entries here instead of ever altering a column in place.
-_MIGRATIONS: list[tuple[str, str, str]] = []
+_MIGRATIONS: list[tuple[str, str, str]] = [
+    ("task", "created_by_id", "ALTER TABLE task ADD COLUMN created_by_id VARCHAR(36)"),
+    ("task", "created_by_name", "ALTER TABLE task ADD COLUMN created_by_name VARCHAR(200)"),
+    ("task", "delegation_state", "ALTER TABLE task ADD COLUMN delegation_state VARCHAR(20)"),
+    ("task", "delegated_at", "ALTER TABLE task ADD COLUMN delegated_at DATETIME"),
+]
 
 
 def _run_migrations(app):

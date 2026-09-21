@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   useCreateTask,
+  useDelegateTask,
   useDeleteTask,
+  useProjectTasks,
   useReorderTasks,
-  useSuggestTasks,
+  useRespondTask,
   useTasks,
   useUpdateTask,
 } from '../api/hooks'
@@ -29,7 +32,10 @@ export default function BoardPage() {
   const updateTask = useUpdateTask(persona?.id)
   const deleteTask = useDeleteTask(persona?.id)
   const reorderTasks = useReorderTasks(persona?.id)
-  const suggestTasks = useSuggestTasks(persona?.id)
+  const delegateTask = useDelegateTask(persona?.id)
+  const respondTask = useRespondTask(persona?.id)
+  const [params] = useSearchParams()
+  const boardProject = (persona?.projects ?? []).find((p) => p.id === params.get('board'))
 
   const tasksById = useMemo(() => new Map((tasks ?? []).map((t) => [t.id, t])), [tasks])
 
@@ -80,10 +86,6 @@ export default function BoardPage() {
     reorderTasks.mutate(next)
   }
 
-  const suggestResult = suggestTasks.data
-  const suggestError =
-    suggestResult && !Array.isArray(suggestResult) ? suggestResult.error : null
-
   if (personaLoading) {
     return <div className="board-page__loading">Loading…</div>
   }
@@ -101,28 +103,16 @@ export default function BoardPage() {
     return <div className="board-page__loading">No persona to view as yet.</div>
   }
 
+  if (boardProject) {
+    return <ProjectBoard projectId={boardProject.id} projectName={boardProject.name} />
+  }
+
+  const projects = persona.projects.map((p) => ({ id: p.id, name: p.name }))
+
   return (
     <div className="board-page">
-      <div className="board-page__toolbar">
-        <h1 className="board-page__title">{persona.name}'s board</h1>
-        <button
-          className="tm-btn tm-btn--primary"
-          onClick={() => suggestTasks.mutate()}
-          disabled={suggestTasks.isPending}
-        >
-          {suggestTasks.isPending ? 'Thinking…' : '✨ Suggest backlog items'}
-        </button>
-      </div>
-
-      {suggestError && (
-        <p className="board-page__suggest-error">{suggestError}</p>
-      )}
-      {Array.isArray(suggestResult) && suggestResult.length === 0 && (
-        <p className="board-page__suggest-note">
-          Nothing in your current projects and apps warranted a new item right now.
-        </p>
-      )}
-
+      {delegateTask.error && <p className="board-page__suggest-error">{delegateTask.error.message}</p>}
+      {respondTask.error && <p className="board-page__suggest-error">{respondTask.error.message}</p>}
       {tasksLoading ? (
         <div className="board-page__loading">Loading board…</div>
       ) : (
@@ -154,8 +144,11 @@ export default function BoardPage() {
                       onDragStart={() => setDragId(id)}
                       onDragEnd={() => setDragId(null)}
                       onDropOn={() => handleDrop(status, id)}
+                      projects={projects}
                       onSave={(data) => updateTask.mutate({ id, ...data })}
                       onDelete={() => deleteTask.mutate(id)}
+                      onDelegate={(toPersonId) => delegateTask.mutate({ id, toPersonId })}
+                      onRespond={(accept, reason) => respondTask.mutate({ id, accept, reason })}
                     />
                   )
                 })}
@@ -164,6 +157,7 @@ export default function BoardPage() {
               {status === 'backlog' &&
                 (addingTo === 'backlog' ? (
                   <AddTaskForm
+                    projects={projects}
                     onCancel={() => setAddingTo(null)}
                     onSave={(data) => {
                       createTask.mutate(data)
@@ -183,20 +177,52 @@ export default function BoardPage() {
   )
 }
 
+type ProjectOption = { id: string; name: string }
+type SaveData = { title: string; note?: string; project_id?: string | null; project_name?: string | null }
+
+function ProjectSelect({
+  projects,
+  value,
+  onChange,
+}: {
+  projects: ProjectOption[]
+  value: string
+  onChange: (id: string) => void
+}) {
+  return (
+    <select className="task-form__project" value={value} onChange={(e) => onChange(e.target.value)}>
+      <option value="">Personal (no project)</option>
+      {projects.map((p) => (
+        <option key={p.id} value={p.id}>
+          {p.name}
+        </option>
+      ))}
+    </select>
+  )
+}
+
 function AddTaskForm({
+  projects,
   onSave,
   onCancel,
 }: {
-  onSave: (data: { title: string; note?: string }) => void
+  projects: ProjectOption[]
+  onSave: (data: SaveData) => void
   onCancel: () => void
 }) {
   const [title, setTitle] = useState('')
   const [note, setNote] = useState('')
+  const [projectId, setProjectId] = useState('')
 
   function save() {
     const t = title.trim()
     if (!t) return
-    onSave({ title: t, note: note.trim() || undefined })
+    onSave({
+      title: t,
+      note: note.trim() || undefined,
+      project_id: projectId || null,
+      project_name: projects.find((p) => p.id === projectId)?.name ?? null,
+    })
   }
 
   return (
@@ -222,6 +248,7 @@ function AddTaskForm({
         onChange={(e) => setNote(e.target.value)}
         rows={2}
       />
+      <ProjectSelect projects={projects} value={projectId} onChange={setProjectId} />
       <div className="task-form__actions">
         <button className="tm-btn tm-btn--primary" disabled={!title.trim()} onClick={save}>
           Add
@@ -240,31 +267,56 @@ function TaskCard({
   onDragStart,
   onDragEnd,
   onDropOn,
+  projects,
   onSave,
   onDelete,
+  onDelegate,
+  onRespond,
 }: {
   task: Task
   dragging: boolean
   onDragStart: () => void
   onDragEnd: () => void
   onDropOn: () => void
-  onSave: (data: { title: string; note?: string }) => void
+  projects: ProjectOption[]
+  onSave: (data: SaveData) => void
   onDelete: () => void
+  onDelegate: (toPersonId: string) => void
+  onRespond: (accept: boolean, reason?: string) => void
 }) {
+  const { persona, people } = usePersona()
   const [editing, setEditing] = useState(false)
   const [title, setTitle] = useState(task.title)
   const [note, setNote] = useState(task.note ?? '')
+  const [projectId, setProjectId] = useState(task.project_id ?? '')
+  const [delegating, setDelegating] = useState(false)
+  const [toPerson, setToPerson] = useState('')
+  const [declining, setDeclining] = useState(false)
+  const [reason, setReason] = useState('')
+
+  const offered = task.delegation_state === 'offered'
+  const members = people.filter(
+    (p) => p.id !== persona?.id && !p.is_admin && !!task.project_id && p.project_ids.includes(task.project_id),
+  )
+  const delegatedBy =
+    task.created_by_id && task.created_by_id !== persona?.id ? task.created_by_name : null
 
   function startEdit() {
     setTitle(task.title)
     setNote(task.note ?? '')
+    setProjectId(task.project_id ?? '')
     setEditing(true)
   }
 
   function save() {
     const t = title.trim()
     if (!t) return
-    onSave({ title: t, note: note.trim() || undefined })
+    onSave({
+      title: t,
+      note: note.trim() || undefined,
+      project_id: projectId || null,
+      project_name: projects.find((p) => p.id === projectId)?.name ?? null,
+    })
     setEditing(false)
   }
 
@@ -283,6 +335,7 @@ function TaskCard({
           onChange={(e) => setNote(e.target.value)}
           rows={2}
         />
+        <ProjectSelect projects={projects} value={projectId} onChange={setProjectId} />
         <div className="task-form__actions">
           <button className="tm-btn tm-btn--primary" disabled={!title.trim()} onClick={save}>
             Save
@@ -298,7 +351,7 @@ function TaskCard({
   return (
     <div
       className={`task-card ${dragging ? 'task-card--dragging' : ''} ${task.source === 'ai_suggested' ? 'task-card--suggested' : ''}`}
-      draggable
+      draggable={!offered}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       onDragOver={(e) => {
@@ -310,20 +363,154 @@ function TaskCard({
         e.stopPropagation()
         onDropOn()
       }}
-      title="Drag to reorder or move"
+      title={offered ? 'Accept or decline to move this card' : 'Drag to reorder or move'}
     >
+      {offered && (
+        <span className="task-card__badge task-card__badge--offer">
+          Offered{delegatedBy ? ` by ${delegatedBy}` : ''}
+        </span>
+      )}
+      {!offered && delegatedBy && task.delegation_state === 'accepted' && (
+        <span className="task-card__badge task-card__badge--from">From {delegatedBy}</span>
+      )}
+      {task.delegation_state === 'declined' && (
+        <span className="task-card__badge task-card__badge--declined">Declined</span>
+      )}
       {task.source === 'ai_suggested' && <span className="task-card__badge">✨ Suggested</span>}
       <p className="task-card__title">{task.title}</p>
       {task.note && <p className="task-card__note">{task.note}</p>}
       {task.project_name && <span className="task-card__tag">{task.project_name}</span>}
-      <div className="task-card__actions">
-        <button className="task-card__action" onClick={startEdit}>
-          Edit
-        </button>
-        <button className="task-card__action task-card__action--delete" onClick={onDelete}>
-          Delete
-        </button>
+      {offered && !declining && (
+        <div className="task-card__actions">
+          <button className="tm-btn tm-btn--primary task-card__respond" onClick={() => onRespond(true)}>
+            Accept
+          </button>
+          <button className="tm-btn tm-btn--ghost task-card__respond" onClick={() => setDeclining(true)}>
+            Decline
+          </button>
+        </div>
+      )}
+      {offered && declining && (
+        <div className="task-card__inline">
+          <input
+            className="task-form__title"
+            placeholder="Reason (optional)"
+            value={reason}
+            autoFocus
+            onChange={(e) => setReason(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && onRespond(false, reason)}
+          />
+          <div className="task-form__actions">
+            <button className="tm-btn tm-btn--primary" onClick={() => onRespond(false, reason)}>
+              Decline
+            </button>
+            <button className="tm-btn tm-btn--ghost" onClick={() => setDeclining(false)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+      {delegating && (
+        <div className="task-card__inline">
+          <select className="task-form__project" value={toPerson} onChange={(e) => setToPerson(e.target.value)}>
+            <option value="">Delegate to…</option>
+            {members.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+          <div className="task-form__actions">
+            <button
+              className="tm-btn tm-btn--primary"
+              disabled={!toPerson}
+              onClick={() => {
+                onDelegate(toPerson)
+                setDelegating(false)
+                setToPerson('')
+              }}
+            >
+              Send
+            </button>
+            <button className="tm-btn tm-btn--ghost" onClick={() => setDelegating(false)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+      {!offered && !delegating && (
+        <div className="task-card__actions">
+          <button className="task-card__action" onClick={startEdit}>
+            Edit
+          </button>
+          {task.project_id && members.length > 0 && (
+            <button className="task-card__action" onClick={() => setDelegating(true)}>
+              Delegate
+            </button>
+          )}
+          <button className="task-card__action task-card__action--delete" onClick={onDelete}>
+            Delete
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** Read-only view of one project: the same four columns as the personal board, holding everyone's
+ * cards with the assignee named on each tile. Within a column, cards group by person and keep that
+ * person's own order — there is deliberately no project-wide ranking, and you can't drag anyone
+ * else's cards. Delegating happens from a card on your own board. */
+function ProjectBoard({ projectId, projectName }: { projectId: string; projectName: string }) {
+  const { people } = usePersona()
+  const { data: tasks, isLoading } = useProjectTasks(projectId)
+  const names = new Map(people.map((p) => [p.id, p.name]))
+
+  const columns = useMemo(() => {
+    const cols: Record<TaskStatus, Task[]> = { backlog: [], todo: [], doing: [], done: [] }
+    for (const t of tasks ?? []) cols[t.status].push(t)
+    const nameOf = (id: string) => names.get(id) ?? ''
+    for (const list of Object.values(cols))
+      list.sort((a, b) => nameOf(a.person_id).localeCompare(nameOf(b.person_id)) || a.position - b.position)
+    return cols
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tasks, people])
+
+  if (isLoading) return <div className="board-page__loading">Loading {projectName}…</div>
+
+  return (
+    <div className="board-page">
+      <div className="board-columns">
+        {STATUSES.map((status) => (
+          <div key={status} className="board-column">
+            <div className="board-column__head">
+              <span className="board-column__title">{STATUS_LABEL[status]}</span>
+              <span className="board-column__count">{columns[status].length}</span>
+            </div>
+            <div className="board-column__cards">
+              {columns[status].map((t) => (
+                <div key={t.id} className="task-card task-card--readonly">
+                  {t.delegation_state === 'offered' && (
+                    <span className="task-card__badge task-card__badge--offer">Offered</span>
+                  )}
+                  <p className="task-card__title">{t.title}</p>
+                  <div className="task-card__row">
+                    <span className="task-card__assignee">{names.get(t.person_id) ?? 'Unknown'}</span>
+                    {t.created_by_name && t.created_by_id !== t.person_id && (
+                      <span className="task-card__tag">from {t.created_by_name}</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
+      {(tasks ?? []).length === 0 && (
+        <p className="board-page__suggest-note">
+          No cards are tagged to {projectName} yet. Tag one from your own board (or delegate it) and it appears here.
+        </p>
+      )}
     </div>
   )
 }

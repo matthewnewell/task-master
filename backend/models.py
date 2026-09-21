@@ -41,6 +41,11 @@ STATUS_LABEL = {"backlog": "Backlog", "todo": "To Do", "doing": "Doing", "done":
 # every other app's AI feature already takes (WinMax's score notes, Value Stream's chat).
 SOURCES = ("manual", "ai_suggested")
 
+# Delegation lifecycle for a project-tagged card handed to someone else. NULL = never delegated.
+# An "offered" card sits in the assignee's Backlog until they accept or decline — a delegation is
+# an offer, not a command, so it never silently lands in someone's Doing column.
+DELEGATION_STATES = ("offered", "accepted", "declined")
+
 
 class Task(db.Model):
     __tablename__ = "task"
@@ -63,6 +68,15 @@ class Task(db.Model):
     application_id = db.Column(db.String(36), nullable=True)
     application_name = db.Column(db.String(200), nullable=True)
 
+    # Delegation. `person_id` above stays the *assignee* (whose board the card is on); these record
+    # who originally created it and where it stands. `created_by_id` NULL = self-created and never
+    # delegated. A decline hands the card back to created_by_id; a re-delegation by the assignee
+    # changes person_id but keeps created_by_id, so provenance survives a chain of hand-offs.
+    created_by_id = db.Column(db.String(36), nullable=True)
+    created_by_name = db.Column(db.String(200), nullable=True)
+    delegation_state = db.Column(db.String(20), nullable=True)
+    delegated_at = db.Column(db.DateTime, nullable=True)
+
     created_at = db.Column(db.DateTime, default=_now, nullable=False)
     updated_at = db.Column(db.DateTime, default=_now, onupdate=_now, nullable=False)
 
@@ -79,6 +93,10 @@ class Task(db.Model):
             "project_name": self.project_name,
             "application_id": self.application_id,
             "application_name": self.application_name,
+            "created_by_id": self.created_by_id,
+            "created_by_name": self.created_by_name,
+            "delegation_state": self.delegation_state,
+            "delegated_at": self.delegated_at.isoformat() if self.delegated_at else None,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
         }

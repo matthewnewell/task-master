@@ -60,3 +60,18 @@ def fetch_app_journal(application_id: str, project_id: str) -> list[dict] | None
         return entries if isinstance(entries, list) else None
     except httpx.HTTPError:
         return None
+
+
+def post_project_note(project_id: str, person_id: str, body: str) -> bool:
+    """Writes one entry to a project's shared Journal (Depot's POST /api/projects/<id>/notes).
+    Best-effort by design: delegating a card must never fail because the Journal was unreachable,
+    so this returns True/False instead of raising and callers just report whether it landed."""
+    try:
+        r = httpx.post(
+            f"{DEPOT_API_URL}/api/projects/{project_id}/notes",
+            json={"person_id": person_id, "body": body},
+            timeout=3.0,
+        )
+        return r.status_code == 201
+    except httpx.HTTPError:
+        return False

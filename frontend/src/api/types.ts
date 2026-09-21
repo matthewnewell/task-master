@@ -21,6 +21,10 @@ export interface Task {
   project_name: string | null
   application_id: string | null
   application_name: string | null
+  created_by_id: string | null
+  created_by_name: string | null
+  delegation_state: 'offered' | 'accepted' | 'declined' | null
+  delegated_at: string | null
   created_at: string
   updated_at: string
 }

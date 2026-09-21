@@ -5,6 +5,7 @@ from flask import Flask, send_from_directory
 from db import init_db
 from routes.people import bp as people_bp
 from routes.suggest import bp as suggest_bp
+from routes.summary import bp as summary_bp
 from routes.tasks import bp as tasks_bp
 from seed import seed_if_empty
 
@@ -18,6 +19,7 @@ def create_app():
     init_db(app)
     app.register_blueprint(tasks_bp)
     app.register_blueprint(suggest_bp)
+    app.register_blueprint(summary_bp)
     app.register_blueprint(people_bp)
 
     with app.app_context():
