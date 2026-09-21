@@ -29,7 +29,7 @@ def seed_if_empty():
             position=0,
             source="manual",
             project_id=BRACKET_PROJECT_ID,
-            project_name="Demo: Bracket Assembly Program",
+            project_name="Bracket Assembly Program",
         ),
         Task(
             person_id=SAM_ORTIZ_PERSON_ID,
@@ -59,8 +59,12 @@ def seed_if_empty():
             position=0,
             source="manual",
             project_id=BRACKET_PROJECT_ID,
-            project_name="Demo: Bracket Assembly Program",
+            project_name="Bracket Assembly Program",
         ),
     ]
     db.session.add_all(tasks)
     db.session.commit()
+
+    from demo_cards import apply_demo_cards
+
+    apply_demo_cards()

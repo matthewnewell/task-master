@@ -29,7 +29,7 @@ def test_seeded_board(client):
     res = client.get(f"/api/tasks?person_id={SAM_ORTIZ_PERSON_ID}")
     assert res.status_code == 200
     tasks = res.get_json()
-    assert len(tasks) == 5
+    assert len(tasks) == 6  # 5 original + the Radar capacity card from demo_cards
     statuses = {t["status"] for t in tasks}
     assert statuses == {"backlog", "todo", "doing", "done"}
 

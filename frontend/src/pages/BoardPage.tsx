@@ -121,7 +121,10 @@ export default function BoardPage() {
             <div
               key={status}
               className="board-column"
-              onDragOver={(e) => e.preventDefault()}
+              onDragOver={(e) => {
+                e.preventDefault()
+                e.dataTransfer.dropEffect = 'move'
+              }}
               onDrop={(e) => {
                 e.preventDefault()
                 handleDrop(status, null)
@@ -352,11 +355,17 @@ function TaskCard({
     <div
       className={`task-card ${dragging ? 'task-card--dragging' : ''} ${task.source === 'ai_suggested' ? 'task-card--suggested' : ''}`}
       draggable={!offered}
-      onDragStart={onDragStart}
+      onDragStart={(e) => {
+        // Firefox won't start a drag without data on the transfer; Chromium doesn't care.
+        e.dataTransfer.effectAllowed = 'move'
+        e.dataTransfer.setData('text/plain', task.id)
+        onDragStart()
+      }}
       onDragEnd={onDragEnd}
       onDragOver={(e) => {
         e.preventDefault()
         e.stopPropagation()
+        e.dataTransfer.dropEffect = 'move'
       }}
       onDrop={(e) => {
         e.preventDefault()
