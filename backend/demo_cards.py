@@ -20,7 +20,7 @@ PRIYA = "5b0e3f0a-6c1d-4a52-9d0e-7d2a1c8b4f11"
 MARCUS = "8c2d7e14-3f5a-4b96-a1c7-92e5b6d0a3c2"
 JESS = "c96051dc-b435-476f-8600-2283a6039df4"
 
-BRACKET = ("ff5bfe0b-7b18-4337-a464-6517c6f6c13b", "Bracket Assembly Program")
+BRACKET = ("ff5bfe0b-7b18-4337-a464-6517c6f6c13b", "Bracket Assembly Project")
 NACELLE = ("35fe3413-20e9-4762-8828-029ecade70c2", "Nacelle Fairing Retrofit")
 RADAR = ("2a9c5e71-84d3-4f0b-b6a2-c13e7d9f5a08", "Radar Housing Production")
 AVIONICS = ("6f1b8d23-0a4e-47c5-8e93-5b7c2a1d9e64", "Avionics Bay Closeout")

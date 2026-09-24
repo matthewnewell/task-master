@@ -1,27 +1,4 @@
-.tm-nav {
-  display: flex;
-  align-items: center;
-  gap: 24px;
-  padding: 10px 20px;
-  background: var(--color-surface);
-  border-bottom: 1px solid var(--color-border);
-  flex-shrink: 0;
-}
-
-.tm-nav__brand {
-  font-weight: 700;
-  font-size: 14px;
-  color: var(--color-text);
-  text-decoration: none;
-  flex-shrink: 0;
-}
-
-.tm-nav__right {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
+/* Task Master's own controls inside the shared header: the board picker and the suggest note. */
 
 .tm-nav__board {
   padding: 6px 10px;
@@ -43,3 +20,4 @@
   font-size: 12px;
   color: var(--color-text-secondary);
 }
+

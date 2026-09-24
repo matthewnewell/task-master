@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { AppHeader } from '@conways/drawer'
 import { NavLink, useLocation, useSearchParams } from 'react-router-dom'
 import { useSuggestTasks } from '../api/hooks'
 import { usePersona } from '../lib/persona'
@@ -46,10 +47,28 @@ export default function Nav() {
   }
 
   return (
-    <nav className="tm-nav">
-      <NavLink to="/about" className="tm-nav__brand">
-        Task Master
-      </NavLink>
+    <AppHeader
+      brand={
+        <NavLink to="/about" className="ch-brand">
+          Task Master
+        </NavLink>
+      }
+      right={
+        onBoard && !activeBoard ? (
+          <>
+            {note && (
+              <span className="tm-nav__note" title={note}>
+                {note}
+              </span>
+            )}
+            <button className="tm-btn tm-btn--primary" onClick={runSuggest} disabled={suggest.isPending}>
+              {suggest.isPending ? 'Thinking…' : '✨ Suggest backlog items'}
+            </button>
+          </>
+        ) : undefined
+      }
+      user={<PersonaMenu />}
+    >
       {onBoard && persona && (
         <select
           className="tm-nav__board"
@@ -65,21 +84,6 @@ export default function Nav() {
           ))}
         </select>
       )}
-      <div className="tm-nav__right">
-        {onBoard && !activeBoard && (
-          <>
-            {note && (
-              <span className="tm-nav__note" title={note}>
-                {note}
-              </span>
-            )}
-            <button className="tm-btn tm-btn--primary" onClick={runSuggest} disabled={suggest.isPending}>
-              {suggest.isPending ? 'Thinking…' : '✨ Suggest backlog items'}
-            </button>
-          </>
-        )}
-        <PersonaMenu />
-      </div>
-    </nav>
+    </AppHeader>
   )
 }

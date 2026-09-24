@@ -29,7 +29,7 @@ def seed_if_empty():
             position=0,
             source="manual",
             project_id=BRACKET_PROJECT_ID,
-            project_name="Bracket Assembly Program",
+            project_name="Bracket Assembly Project",
         ),
         Task(
             person_id=SAM_ORTIZ_PERSON_ID,
@@ -59,7 +59,7 @@ def seed_if_empty():
             position=0,
             source="manual",
             project_id=BRACKET_PROJECT_ID,
-            project_name="Bracket Assembly Program",
+            project_name="Bracket Assembly Project",
         ),
     ]
     db.session.add_all(tasks)
