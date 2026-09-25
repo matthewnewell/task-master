@@ -5,7 +5,9 @@ project id — Task Master cards carry it directly.
 
 Headline is the project's open cards (everything not Done); the label says how many are being
 worked and how many delegated offers are still waiting on an answer, which is the one thing worth
-turning the tile yellow for. With no project it's the same numbers across every card.
+turning the tile yellow for. `person_id` (optional, a Depot person id) narrows it to that
+person's own board: the Launchpad's pinned tile sends it, so it matches what they see when they
+open Task Master. With neither, it's the same numbers across every card.
 """
 
 import os
@@ -22,9 +24,12 @@ FRONTEND_BASE_URL = os.environ.get("FRONTEND_BASE_URL", "http://localhost:5186")
 @bp.get("/summary")
 def summary():
     project_id = request.args.get("project_id")
+    person_id = request.args.get("person_id")
     query = Task.query.filter(Task.status != "done")
     if project_id:
         query = query.filter_by(project_id=project_id)
+    if person_id:
+        query = query.filter_by(person_id=person_id)
     tasks = query.all()
 
     if project_id and not tasks:
@@ -46,5 +51,9 @@ def summary():
         "headline": str(len(tasks)),
         "label": label,
         "status": "warn" if offered else "ok",
-        "href": f"{FRONTEND_BASE_URL}/?board={project_id}" if project_id else f"{FRONTEND_BASE_URL}/",
+        "href": (
+            f"{FRONTEND_BASE_URL}/?board={project_id}" if project_id
+            else f"{FRONTEND_BASE_URL}/?person_id={person_id}" if person_id
+            else f"{FRONTEND_BASE_URL}/"
+        ),
     })

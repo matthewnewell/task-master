@@ -37,3 +37,15 @@ def test_summary_counts_open_cards_for_project(client):
 def test_summary_unknown_project_is_quiet(client):
     d = client.get("/api/summary?project_id=nope").get_json()
     assert d["headline"] is None and d["status"] is None
+
+
+def test_summary_scoped_to_person(client):
+    # The Launchpad's pinned tile sends person_id: count only that person's open cards.
+    for person, title, status in (("pa", "A", "backlog"), ("pa", "B", "doing"), ("pa", "C", "done"), ("pb", "D", "todo")):
+        t = client.post("/api/tasks", json={"person_id": person, "title": title}).get_json()
+        client.put("/api/tasks/reorder", json={"person_id": person, "columns": {status: [t["id"]]}})
+    d = client.get("/api/summary?person_id=pa").get_json()
+    assert d["headline"] == "2"
+    assert "1 in progress" in d["label"]
+    assert d["href"].endswith("/?person_id=pa")
+    assert client.get("/api/summary?person_id=pb").get_json()["headline"] == "1"
