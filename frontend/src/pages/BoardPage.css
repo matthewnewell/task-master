@@ -47,13 +47,9 @@
   display: grid;
   grid-template-columns: repeat(4, minmax(240px, 1fr));
   gap: 16px;
-  align-items: start;
-}
-
-@media (max-width: 900px) {
-  .board-columns {
-    grid-template-columns: 1fr;
-  }
+  /* Lanes stretch to the board's full height, so a drop anywhere down a lane lands in it, not
+     only on the strip its cards happen to cover. */
+  align-items: stretch;
 }
 
 .board-column {
@@ -64,7 +60,26 @@
   background: var(--color-surface-sunken);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  min-height: 120px;
+  min-height: max(240px, calc(100vh - 130px));
+  transition: background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+@media (max-width: 900px) {
+  .board-columns {
+    grid-template-columns: 1fr;
+  }
+
+  /* Stacked lanes: full height each would bury the ones below. */
+  .board-column {
+    min-height: 120px;
+  }
+}
+
+/* The lane a dragged card would drop into. */
+.board-column--drop-target {
+  background: var(--color-accent-soft);
+  border-color: var(--color-accent);
+  box-shadow: inset 0 0 0 1px var(--color-accent);
 }
 
 .board-column__head {
@@ -132,6 +147,18 @@
 .task-card--dragging {
   opacity: 0.4;
   cursor: grabbing;
+}
+
+/* The dragged card would drop in front of this one. Sits in the 8px gap above the card. */
+.task-card--insert-before::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  top: -6px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--color-accent);
 }
 
 .task-card--suggested {

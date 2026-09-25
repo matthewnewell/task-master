@@ -61,11 +61,21 @@ export default function BoardPage() {
   const columns = localColumns ?? serverColumns
 
   const [dragId, setDragId] = useState<string | null>(null)
+  // Where the dragged card would land, so the lane (and the card it would go in front of) can
+  // light up. Lanes stretch to the board's full height, so anywhere in a lane counts.
+  const [overStatus, setOverStatus] = useState<TaskStatus | null>(null)
+  const [overCardId, setOverCardId] = useState<string | null>(null)
   const [addingTo, setAddingTo] = useState<TaskStatus | null>(null)
+
+  function endDrag() {
+    setDragId(null)
+    setOverStatus(null)
+    setOverCardId(null)
+  }
 
   function handleDrop(targetStatus: TaskStatus, targetId: string | null) {
     const id = dragId
-    setDragId(null)
+    endDrag()
     if (!id) return
 
     const next: Columns = {
@@ -83,7 +93,16 @@ export default function BoardPage() {
     list.splice(insertAt === -1 ? list.length : insertAt, 0, id)
 
     setLocalColumns(next)
-    reorderTasks.mutate(next)
+    // Dragging an offered card out of Backlog is taking it on: accept the offer, then move it.
+    // (The server won't move an offer out of Backlog, so the accept has to land first.)
+    if (tasksById.get(id)?.delegation_state === 'offered' && targetStatus !== 'backlog') {
+      respondTask.mutate(
+        { id, accept: true },
+        { onSuccess: () => reorderTasks.mutate(next), onError: () => setLocalColumns(null) },
+      )
+    } else {
+      reorderTasks.mutate(next)
+    }
   }
 
   if (personaLoading) {
@@ -120,10 +139,19 @@ export default function BoardPage() {
           {STATUSES.map((status) => (
             <div
               key={status}
-              className="board-column"
+              className={`board-column${dragId && overStatus === status ? ' board-column--drop-target' : ''}`}
               onDragOver={(e) => {
+                if (!dragId) return
                 e.preventDefault()
                 e.dataTransfer.dropEffect = 'move'
+                setOverStatus(status)
+                // Over the lane's empty space (not a card): the card goes to the end.
+                if (!(e.target as Element).closest('.task-card')) setOverCardId(null)
+              }}
+              onDragLeave={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+                  setOverStatus((s) => (s === status ? null : s))
+                }
               }}
               onDrop={(e) => {
                 e.preventDefault()
@@ -144,8 +172,10 @@ export default function BoardPage() {
                       key={id}
                       task={task}
                       dragging={dragId === id}
+                      insertBefore={!!dragId && dragId !== id && overCardId === id}
                       onDragStart={() => setDragId(id)}
-                      onDragEnd={() => setDragId(null)}
+                      onDragEnd={endDrag}
+                      onDragOverCard={() => setOverCardId(id)}
                       onDropOn={() => handleDrop(status, id)}
                       projects={projects}
                       onSave={(data) => updateTask.mutate({ id, ...data })}
@@ -267,8 +297,10 @@ function AddTaskForm({
 function TaskCard({
   task,
   dragging,
+  insertBefore,
   onDragStart,
   onDragEnd,
+  onDragOverCard,
   onDropOn,
   projects,
   onSave,
@@ -278,8 +310,11 @@ function TaskCard({
 }: {
   task: Task
   dragging: boolean
+  /** The dragged card would drop in front of this one: show the insertion line. */
+  insertBefore: boolean
   onDragStart: () => void
   onDragEnd: () => void
+  onDragOverCard: () => void
   onDropOn: () => void
   projects: ProjectOption[]
   onSave: (data: SaveData) => void
@@ -353,8 +388,8 @@ function TaskCard({
 
   return (
     <div
-      className={`task-card ${dragging ? 'task-card--dragging' : ''} ${task.source === 'ai_suggested' ? 'task-card--suggested' : ''}`}
-      draggable={!offered}
+      className={`task-card ${dragging ? 'task-card--dragging' : ''} ${insertBefore ? 'task-card--insert-before' : ''} ${task.source === 'ai_suggested' ? 'task-card--suggested' : ''}`}
+      draggable
       onDragStart={(e) => {
         // Firefox won't start a drag without data on the transfer; Chromium doesn't care.
         e.dataTransfer.effectAllowed = 'move'
@@ -363,16 +398,21 @@ function TaskCard({
       }}
       onDragEnd={onDragEnd}
       onDragOver={(e) => {
+        // No stopPropagation: the lane underneath needs this too, to light up.
         e.preventDefault()
-        e.stopPropagation()
         e.dataTransfer.dropEffect = 'move'
+        onDragOverCard()
       }}
       onDrop={(e) => {
         e.preventDefault()
         e.stopPropagation()
         onDropOn()
       }}
-      title={offered ? 'Accept or decline to move this card' : 'Drag to reorder or move'}
+      title={
+        offered
+          ? 'Drag out of Backlog to accept it, or use Accept / Decline'
+          : 'Drag to reorder or move'
+      }
     >
       {offered && (
         <span className="task-card__badge task-card__badge--offer">
